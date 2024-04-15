@@ -257,37 +257,27 @@ class GeoDigraph(Digraph):
 
         return super().remove_edge(src, dst)
 
-    def split_edge(self, eid):
-        # TODO delete multi-edges 
-        idxs = check_multi_edges(net)
-
-        keep_idx = df_edges.loc[eid]\
-                            .sort_values(['level', 'dist'], ascending=[True, True])\
-                            .groupby(['src', 'dst'])\
-                            .head(1).index
-        remove_idx = [i for i in idxs if i not in keep_idx]
-
-        for id in remove_idx:
-            print(f"Split multi-edge: {id}")
-            edges = net.get_edge(remove_idx)
-            net.remove_edge(id)
-
-            waypoints = edges.iloc[0].waypoints
-            coords = edges.iloc[0].geometry.coords[:]
-            tmp = pd.concat([edges] * (len(waypoints) - 1)).reset_index(drop=True)
-
-            tmp.loc[:, 'order'] = tmp.index
-            tmp.loc[:, 'src'] = waypoints[:-1]
-            tmp.loc[:, 'dst'] = waypoints[1:]
-            tmp.loc[:, 'waypoints'] = tmp.apply(lambda x: x.waypoints[x.name: x.name + 2], axis=1)
-            tmp.loc[:, 'geometry'] = tmp.apply(lambda x: LineString(coords[x.name: x.name + 2]), axis=1)
-
-            net.add_edges_from_df(tmp)
-            
-        return NotImplementedError
-
     """ coord system """
     def align_crs(self, gdf):
+        """
+        Aligns the coordinate reference system (CRS) of a given GeoDataFrame to the CRS of the current object.
+
+        This method checks if the CRS of the provided GeoDataFrame (`gdf`) matches the CRS of the current object (`self.crs`). 
+        If they match, the original GeoDataFrame is returned without any modification. If they do not match, 
+        the GeoDataFrame is transformed to the same CRS as the current object and then returned.
+
+        Parameters:
+        - gdf (gpd.GeoDataFrame): The GeoDataFrame whose CRS is to be aligned.
+
+        Returns:
+        - gpd.GeoDataFrame: The GeoDataFrame with CRS aligned to `self.crs`.
+
+        Example:
+        >>> current_crs_gdf = MyClass(crs="EPSG:4326")
+        >>> new_gdf = gpd.read_file("path/to/geodatafile.shp")
+        >>> aligned_gdf = current_crs_gdf.align_crs(new_gdf)
+        """
+        
         assert gdf.crs is not None
         assert self.utm_crs is not None
         

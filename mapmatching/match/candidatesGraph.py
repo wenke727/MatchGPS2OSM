@@ -3,7 +3,6 @@ import pandas as pd
 from shapely import LineString
 from geopandas import GeoDataFrame
 
-from ..utils import timeit
 from .status import CANDS_EDGE_TYPE
 from ..geo.azimuth import cal_coords_seq_azimuth
 from ..geo.ops.distance import coords_seq_distance
@@ -86,9 +85,10 @@ def identify_edge_flag(gt: pd.DataFrame, cands: GeoDataFrame, ratio_eps: float =
         - Fast map matching, an algorithm integrating hidden Markov model with precomputation, Fig 4.
     """
     # (src, dst) on the same edge
-    gt.loc[:, 'flag'] = CANDS_EDGE_TYPE.NORMAL
+    gt['flag'] = CANDS_EDGE_TYPE.NORMAL
 
-    same_edge = gt.eid_0 == gt.eid_1
+    same_edge = gt['eid_0'] == gt['eid_1']
+    
     tmp = gt['dist_0'] - gt['step_0_len']
     cond_1 = tmp <= gt['step_n_len']
 
@@ -99,6 +99,7 @@ def identify_edge_flag(gt: pd.DataFrame, cands: GeoDataFrame, ratio_eps: float =
     cond_approx_points = cond & (~cond_1)
     _cands = cands[['pid', 'eid', 'seg_0', 'len_0']]\
                   .set_index(['pid', 'eid']).to_dict('index')
+    
     # reset related params
     gt.loc[cond_approx_points, ['step_n', 'step_n_len']] = gt.loc[cond_approx_points].apply(
         lambda x: _cands[(x.pid_0, x.eid_0)].values(), axis=1, result_type='expand'
@@ -113,9 +114,8 @@ def identify_edge_flag(gt: pd.DataFrame, cands: GeoDataFrame, ratio_eps: float =
 
     return gt
 
-@timeit
-def construct_graph( points,
-                     cands,
+def construct_graph( cands,
+                     points,
                      common_attrs = ['pid', 'eid', 'dist', 'speed'], 
                      left_attrs = ['dst', 'len_1', 'seg_1'], 
                      right_attrs = ['src', 'len_0', 'seg_0', 'observ_prob'],
@@ -155,7 +155,7 @@ def construct_graph( points,
              .reset_index(drop=True)\
              .rename(columns=rename_dict)
 
-    identify_edge_flag(gt, cands)
+    gt = identify_edge_flag(gt, cands)
     traj_info = cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
     
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
@@ -203,3 +203,88 @@ def get_shortest_geometry(gt:GeoDataFrame, geom='geometry', format='LineString')
         gt.loc[:, geom] = gt[geom].apply(LineString)
 
     return gt
+
+
+class CandidateGraphConstructor:
+    """
+    This class is designed to construct a candidate graph for spatial and temporal analysis in map matching processes.
+    
+    The class uses GeoDataFrames to identify and construct potential paths between points based on provided candidates,
+    facilitating the evaluation of different path hypotheses with various attributes and constraints.
+    
+    Attributes:
+        COMMON_ATTRS (list): Default attributes shared among all candidate records.
+        LEFT_ATTRS (list): Attributes specific to the starting point of a path.
+        RIGHT_ATTRS (list): Attributes specific to the ending point of a path.
+        RENAME_DICT (dict): Mapping to rename attributes for clarity in the resulting DataFrame.
+        GT_KEYS (list): Key attributes used for setting DataFrame indices.
+
+    Methods:
+        construct_graph(cands, points, dir_trans): Constructs the graph based on candidates and points.
+        
+    Example:
+        >>> constructor = CandidateGraphConstructor()
+        >>> graph = constructor.construct_graph(cands_dataframe, points_dataframe, dir_trans=True)
+        This will return a DataFrame with potential paths evaluated and flagged according to specified logic.
+
+    Notes:
+        The constructor simplifies the process of graph construction by encapsulating the logic required to merge and process
+        spatial data from GeoDataFrames. It is optimized for efficient merging and processing to handle large datasets typical
+        in geographic information system (GIS) applications.
+    """
+    LEFT_ATTRS = ['pid', 'eid', 'dst', 'len_1', 'seg_1', 'dist', 'speed']
+    RIGHT_ATTRS = ['pid', 'eid', 'src', 'len_0', 'seg_0', 'dist', 'speed', 'observ_prob']
+    RENAME_DICT = {
+        'seg_0': 'step_n',
+        'len_0': 'step_n_len',
+        'seg_1': 'step_0',
+        'len_1': 'step_0_len'
+    }
+    GT_KEYS = ['pid_0', 'eid_0', 'eid_1']
+
+    @staticmethod
+    def _map_prev_layer(cands):
+        layer_ids = np.sort(cands.pid.unique())
+        prev_layer_dict =  {cur: layer_ids[i] for i, cur in enumerate(layer_ids[1:])}
+        prev_layer_dict[layer_ids[0]] = -1
+        
+        return prev_layer_dict
+
+    @staticmethod
+    def _merge_and_process(left, right):
+        # Cartesian product
+        gt = left.merge(right, on='mgd', suffixes=["_0", "_1"])
+        gt.reset_index(drop=True, inplace=True)
+        gt.drop(columns='mgd', inplace=True)
+        gt.rename(columns=CandidateGraphConstructor.RENAME_DICT, inplace=True)
+
+        return gt
+    
+    @staticmethod
+    def construct_graph(cands, points, dir_trans=True):
+        # _prepare_data_frames
+        prev_layer_dict = CandidateGraphConstructor._map_prev_layer(cands)
+
+        left = cands[CandidateGraphConstructor.LEFT_ATTRS]
+        left['mgd'] = left['pid']
+
+        right = cands[CandidateGraphConstructor.RIGHT_ATTRS]
+        right['mgd'] = right['pid'].map(prev_layer_dict)
+        right = right[right['mgd'] >= 0]
+
+        # _merge_and_process
+        gt = CandidateGraphConstructor._merge_and_process(left, right)
+        
+        # construct_graph
+        gt = identify_edge_flag(gt, cands)
+        traj_info = cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
+        gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
+        gt[['src', 'dst']] = gt[['src', 'dst']].astype(np.int64)
+        
+        gt.set_index(CandidateGraphConstructor.GT_KEYS, inplace=True)
+
+        return gt
+
+    
+if __name__ == "__main__":
+    graph = CandidateGraphConstructor.construct_graph(cands, points, dir_trans=True)

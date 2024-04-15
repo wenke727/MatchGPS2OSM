@@ -5,18 +5,11 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 
 from .status import STATUS
-from ..utils.timer import timeit
 from ..graph import GeoDigraph
 from ..geo.ops.point2line import project_points_2_linestrings
 
 
-@timeit
-def get_path(rList:gpd.GeoDataFrame, 
-             graph:gpd.GeoDataFrame, 
-             cands:gpd.GeoDataFrame,
-             metric = {},
-             prob_thres = .8
-             ):
+def get_path(rList: GeoDataFrame, graph: GeoDataFrame,  cands: GeoDataFrame, metric: dict = {}, prob_thres: float = .8):
     """Get path by matched sequence node.
 
     Args:
@@ -48,12 +41,11 @@ def get_path(rList:gpd.GeoDataFrame,
 
     res = {'epath': eids_lst}
     step_0, step_n = _get_first_and_step_n(cands, rList)
+    res['step_0'] = step_0
+    res['step_n'] = step_n
 
     # Case: one step
     if len(eids_lst) == 1:
-        # tmp = get_shared_arr(step_0, step_n)
-        res['step_0'] = step_0
-        res['step_n'] = step_n
         if metric.get('prob', 1) < prob_thres:
             metric['status'] = STATUS.FAILED
         else:
@@ -64,8 +56,6 @@ def get_path(rList:gpd.GeoDataFrame,
     # update first/last step 
     n = len(eids_lst) - 1
     assert n > 0, "Check od list"
-    res['step_0'] = step_0
-    res['step_n'] = step_n
     res['dist'] = steps.sp_dist.sum()
     res['avg_speed'] = np.average(steps['avg_speed'].values, weights = steps['sp_dist'].values)
 
@@ -73,8 +63,8 @@ def get_path(rList:gpd.GeoDataFrame,
     coef = 1 / len(steps.dist_prob)
     dist_prob = np.prod(steps.dist_prob)
     trans_prob = np.prod(steps.trans_prob)
-    metric["norm_prob"], metric["dist_prob"], metric["trans_prob"] = \
-        np.power([metric['prob'], dist_prob, trans_prob], coef)
+    # FIXME 概率
+    metric["norm_prob"], metric["dist_prob"], metric["trans_prob"] = np.power([metric['prob'], dist_prob, trans_prob], coef)
     if "dir_prob" in list(graph):
         metric["dir_prob"] = metric["trans_prob"] / metric["dist_prob"]
 
@@ -87,10 +77,8 @@ def get_path(rList:gpd.GeoDataFrame,
     return res, steps
 
 def _get_first_and_step_n(cands, rList):
-    step_0 = cands.query(
-        f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').iloc[0]
-    step_n = cands.query(
-        f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').iloc[0]
+    step_0 = cands.query(f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').iloc[0]
+    step_n = cands.query(f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').iloc[0]
 
     cal_offset = lambda x: x['len_0'] / (x['len_0'] + x['len_1'])
 

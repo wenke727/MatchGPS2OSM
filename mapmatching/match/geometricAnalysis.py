@@ -1,5 +1,6 @@
 import numpy as np
 import geopandas as gpd
+from geopandas import GeoDataFrame
 from ..geo.query import find_nearest_geometries
 
 
@@ -27,21 +28,13 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
 
     return np.sqrt(_dist)
 
-def analyse_geometric_info(points: gpd.GeoDataFrame,
-                           edges: gpd.GeoDataFrame,
-                           top_k: int = 5,
-                           radius: float = 50,
-                           pid: str = 'pid',
-                           eid: str = 'eid',
-                           bias=0,
-                           deviation=20
-                           ):
+def query_candidates(points: GeoDataFrame, edges: GeoDataFrame, top_k: int = 5, radius: float = 50,
+                           pid: str = 'pid', eid: str = 'eid', bias=0, deviation=20):
     # TODO improve effeciency: get_k_neigbor_edges 50 %, project_point_to_line_segment 50 %
     cands, _ = find_nearest_geometries(points.geometry, edges, 
                                  query_id=pid, project=True, top_k=top_k, 
                                  keep_geom=True, max_distance=radius)
     if cands is not None:
-        # ? deviation 如何取值合适
         cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c, bias, deviation)
 
     return cands

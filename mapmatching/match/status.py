@@ -1,6 +1,7 @@
 from enum import IntEnum
 
 class STATUS:
+    FAILED       = -1 # 成功失败
     SUCCESS       = 0 # 成功匹配
     SAME_LINK     = 1 # 所有轨迹点位于同一条线上
     ONE_POINT     = 2 # 所有轨迹点位于同一个点上

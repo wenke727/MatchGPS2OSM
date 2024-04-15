@@ -5,8 +5,7 @@ from loguru import logger
 from collections import defaultdict
 
 from .spatialAnalysis import get_trans_prob_bet_layers
-from ..utils import Timer, timeit
-
+from ..utils.timer import Timer
 
 def cal_prob_func(x, y, mode):
     if mode == '+':
@@ -45,7 +44,6 @@ def prune_layer(df_layer, level, scores, start_level=3, prune=True, trim_factor=
         return df.set_index('eid_1')
     
     # prune -> pick the most likely one
-    
     if use_pandas:
         _max_prob = df_layer['prob'].max()
         df = df_layer[['prob']].sort_values('prob', ascending=False)\
@@ -98,11 +96,8 @@ def get_max_state(f_score, idx):
     f = f_score[idx]
     if len(f) == 0:
         return None
+    
     return max(f, key=f.get)
-
-def print_level(df_layer):
-    f = lambda x: sorted(df_layer.index.get_level_values(x).unique())
-    return f"{f(1)} -> {f(2)}"
 
 def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', prune_factor=0.75, prune_start_layer=3, level='trace'):
     # Initialize
