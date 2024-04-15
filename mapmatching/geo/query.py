@@ -1,6 +1,7 @@
 import shapely
 import warnings
 import numpy as np
+import pandas as pd
 import geopandas as gpd
 from geopandas import GeoDataFrame
 from shapely import geometry as shapely_geom
@@ -8,58 +9,41 @@ from shapely import geometry as shapely_geom
 from .ops.linear_referencing import compute_point_to_line_proximity
 from ..utils import timeit
 
-def find_nearest_geometries(query_point: GeoDataFrame, geometries: GeoDataFrame, query_id='qid', 
-                            max_distance: float = 50, top_k=None, predicate: str = 'intersects', 
-                            check_diff=True, project=True, keep_geom=True):
-    # TODO: Determine appropriate index for gdf
-
+def check_sindex(gdf: GeoDataFrame):
     # Ensure spatial index is built
-    if not geometries.has_sindex:
+    if not gdf.has_sindex:
         try:
-            print("rebuild sindex: ")
-            geometries.sindex
+            gdf.sindex
         except:
             raise ValueError()
 
-    # Prepare query
-    _query = prepare_query_object(query_point, query_id, geometries.crs)
+def extract_candidate_geometries(query_gdf, target_gdf, candidates, query_id_col):
+    """
+    Extract and annotate geometries from a target GeoDataFrame based on candidate indices derived
+    from a spatial index query.
+
+    Parameters:
+    - query_gdf (GeoDataFrame): The GeoDataFrame containing query geometries.
+    - target_gdf (GeoDataFrame): The GeoDataFrame from which to retrieve candidate geometries.
+    - candidates (tuple): A tuple of arrays (query_indices, target_indices) indicating the indices
+      of matching geometries in the query and target GeoDataFrames.
+    - query_id_col (str): The column name to assign to the query indices in the returned DataFrame.
+
+    Returns:
+    - GeoDataFrame: A new GeoDataFrame with the candidate geometries, including metadata about the
+      original query geometries.
+    """
+    # Retrieve the geometries using the indices provided by candidates
+    query_indices, target_indices = candidates
+    query_points = query_gdf.iloc[query_indices]
+    cand_geometries = target_gdf.iloc[target_indices]
     
-    # Perform spatial indexing query
-    cands = query_spatial_index(_query, geometries, max_distance, predicate)
-    if len(cands[0]) == 0:
-        return None, None
+    # Rename columns and add new columns to annotate the results
+    cand_geometries.rename(columns={'geometry': 'edge_geom'}, inplace=True)
+    cand_geometries.loc[:, query_id_col] = query_points.index
+    cand_geometries.loc[:, "query_geom"] = query_points.values
 
-    # Process query results
-    df_cands = process_query_results(_query, geometries, cands, query_id, project)
-
-    # Further filtering and sorting
-    if max_distance:
-        df_cands.query(f"dist_p2c <= {max_distance}", inplace=True)
-    if top_k:
-        df_cands = filter_top_k_candidates(df_cands, query_id, top_k)
-
-    if not keep_geom:
-        df_cands.drop(columns=["query_geom", "edge_geom"], inplace=True)
-
-    # Check difference
-    no_cands_query = None
-    if check_diff:
-        cands_pid = set(cands[0])
-        all_pid = set(_query.index.unique())
-        no_cands_query = all_pid.difference(cands_pid)
-        warnings.warn(f"{no_cands_query} has no neighbors within the {max_distance} search zone.")
-
-    return df_cands.set_geometry('edge_geom').set_crs(geometries.crs), no_cands_query
-
-def retrieve_candidate_geometries(_query, gdf, cands, query_id):
-    _points = _query.iloc[cands[0]]
-    
-    df_cands = gdf.iloc[cands[1]]
-    df_cands.rename(columns={'geometry': 'edge_geom'}, inplace=True)
-    df_cands.loc[:, query_id] = _points.index
-    df_cands.loc[:, "query_geom"] = _points.values
-
-    return df_cands
+    return cand_geometries
 
 def project_query_on_candidates(df_cands, project=True):
     # dist_p2c
@@ -153,6 +137,7 @@ def query_spatial_index(query_objects, gdf, radius, predicate):
     """
     get_box = lambda geom: shapely_geom.box(geom.x - radius, geom.y - radius, geom.x + radius, geom.y + radius)
     query_boxes = query_objects.apply(get_box)
+    
     return gdf.sindex.query_bulk(query_boxes, predicate)
 
 def process_query_results(query_objects, gdf, cands, query_id, project):
@@ -169,7 +154,48 @@ def process_query_results(query_objects, gdf, cands, query_id, project):
     Returns:
         GeoDataFrame: DataFrame of candidates with additional info.
     """
-    df_cands = retrieve_candidate_geometries(query_objects, gdf, cands, query_id)
+    df_cands = extract_candidate_geometries(query_objects, gdf, cands, query_id)
     project_query_on_candidates(df_cands, project)
     
     return df_cands
+
+def find_nearest_geometries(query_point: GeoDataFrame, gallery_geoms: GeoDataFrame, query_id='qid', 
+                            max_distance: float = 50, top_k=None, predicate: str = 'intersects', 
+                            check_diff=True, project=True, keep_geom=True):
+    # TODO: Determine appropriate index for gdf
+    check_sindex(gallery_geoms)
+    _query = prepare_query_object(query_point, query_id, gallery_geoms.crs)
+    
+    # Perform spatial indexing query
+    cands = query_spatial_index(_query, gallery_geoms, max_distance, predicate)
+    if len(cands[0]) == 0:
+        return None, None
+
+    # Process query results
+    # df_cands = process_query_results(_query, gallery_geoms, cands, query_id, project)
+    df_cands = extract_candidate_geometries(_query, gallery_geoms, cands, query_id)
+    df_cands = project_query_on_candidates(df_cands, project)
+
+    # Further filtering and sorting
+    if max_distance:
+        df_cands.query(f"dist_p2c <= {max_distance}", inplace=True)
+    if top_k:
+        df_cands = filter_top_k_candidates(df_cands, query_id, top_k)
+
+    if not keep_geom:
+        df_cands.drop(columns=["query_geom", "edge_geom"], inplace=True)
+
+    # Check difference
+    no_cands_query = None
+    if check_diff:
+        cands_pid = set(cands[0])
+        all_pid = set(_query.index.unique())
+        no_cands_query = all_pid.difference(cands_pid)
+        warnings.warn(f"{no_cands_query} has no neighbors within the {max_distance} search zone.")
+
+    return df_cands.set_geometry('edge_geom').set_crs(gallery_geoms.crs), no_cands_query
+
+if __name__ == "__main__":
+    pass
+
+    

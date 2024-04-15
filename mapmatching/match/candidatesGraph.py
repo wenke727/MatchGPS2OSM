@@ -82,7 +82,7 @@ def identify_edge_flag(gt: pd.DataFrame, cands: GeoDataFrame, ratio_eps: float =
         - The resulting graph DataFrame will have an additional 'flag' column indicating the edge type.
 
     Refs:
-        - Fast map matching, an algorithm integrating hidden Markov model with precomputation, Fig 4.
+        - Fast map matching, an algorithm integrating hidden Markov model with precomputation, Fig 4. # TODO
     """
     # (src, dst) on the same edge
     gt['flag'] = CANDS_EDGE_TYPE.NORMAL
@@ -106,11 +106,11 @@ def identify_edge_flag(gt: pd.DataFrame, cands: GeoDataFrame, ratio_eps: float =
     ).rename(columns={0: 'step_n', 1: 'step_n_len'})
 
     same_edge_normal = same_edge & cond
-    gt.loc[same_edge_normal, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_FIRST
+    gt.loc[same_edge_normal, 'flag'] = CANDS_EDGE_TYPE.ContinuousEdge
     gt.loc[same_edge_normal, ['src', 'dst']] = gt.loc[same_edge_normal, ['dst', 'src']].values
 
     same_edge_revert = same_edge & (~cond)
-    gt.loc[same_edge_revert, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_LAST
+    gt.loc[same_edge_revert, 'flag'] = CANDS_EDGE_TYPE.ReentryEdge
 
     return gt
 
@@ -287,4 +287,13 @@ class CandidateGraphConstructor:
 
     
 if __name__ == "__main__":
-    graph = CandidateGraphConstructor.construct_graph(cands, points, dir_trans=True)
+    # graph = CandidateGraphConstructor.construct_graph(cands, points, dir_trans=True)
+    data = {
+        'eid_0': [1, 2, 3, 4, 3],
+        'eid_1': [1, 2, 4, 4, 5],
+        'dist_0': [10, 30, 15, 50, 10],
+        'dist_1': [11, 35, 17, 55, 12],  # dist_1 is slightly greater than dist_0 for close points
+    }
+
+    test_df = pd.DataFrame(data)
+    

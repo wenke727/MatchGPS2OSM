@@ -65,12 +65,12 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
         gt.loc[idxs, 'sp_dist'] = np.inf
 
     # OD is on the same edge, but the starting point is relatively ahead of the endpoint
-    flag_1_idxs = gt.query(f"flag == {CANDS_EDGE_TYPE.SAME_SRC_FIRST}").index
+    flag_1_idxs = gt.query(f"flag == {CANDS_EDGE_TYPE.ContinuousEdge}").index
     if len(flag_1_idxs):
         gt.loc[flag_1_idxs, ['epath', 'step_1']] = None, None
         gt.loc[flag_1_idxs, 'sp_dist'] = gt.step_0_len + gt.step_n_len - gt.dist_0
 
-        idx = gt.query(f"flag == {CANDS_EDGE_TYPE.SAME_SRC_FIRST} and sp_dist < {eps}").index
+        idx = gt.query(f"flag == {CANDS_EDGE_TYPE.ContinuousEdge} and sp_dist < {eps}").index
         gt.loc[idx, 'sp_dist'] = gt.euc_dist
 
     # distance trans prob

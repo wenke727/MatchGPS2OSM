@@ -17,9 +17,9 @@ from .geo.ops.resample import resample_polyline_seq_to_point_seq, resample_point
 from .match.status import STATUS
 from .match.io import load_points
 from .match.geometricAnalysis import query_candidates
-from .match.candidatesGraph import construct_graph, CandidateGraphConstructor
+from .match.candidatesGraph import CandidateGraphConstructor
+from .match.viterbi import find_matched_sequence
 from .match.postprocess import get_path, project, transform_mathching_res_2_path
-from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
 from .match.visualization import plot_matching_result, debug_traj_matching
 
 from .utils.timer import timeit

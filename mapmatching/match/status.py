@@ -11,5 +11,6 @@ class STATUS:
 
 class CANDS_EDGE_TYPE:
     NORMAL = 0         # od 不一样
-    SAME_SRC_FIRST = 1 # od 位于同一条edge上，但起点相对终点位置偏前
-    SAME_SRC_LAST  = 2 # 相对偏后
+    ContinuousEdge = 1 # If points suggest the vehicle stays on the edge, od 位于同一条edge上，但起点相对终点位置偏前
+    ReentryEdge  = 2 # the vehicle leaves and then re-enters the same edge
+    ProximityEdge = 3 #
